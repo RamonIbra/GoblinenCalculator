@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+
+# Local SQLite database (contains your actual card data, not source)
+*.db
+*.db-shm
+*.db-wal

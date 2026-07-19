@@ -1,0 +1,164 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Card price calculator";
+}
+
+<h1 class="mb-4">Card price calculator</h1>
+
+<section class="mb-4 p-3 border rounded bg-light">
+    <div class="d-flex align-items-center justify-content-between flex-wrap">
+        <div>
+            @if (Model.Rate is not null)
+            {
+                <span>1 EUR = <strong>@Model.Rate.EurToSek.ToString("0.0000")</strong> SEK</span>
+                <small class="text-muted ms-2">as of @Model.Rate.RetrievedAt.ToLocalTime().ToString("g")</small>
+            }
+            @if (Model.RateError is not null)
+            {
+                <div class="text-danger">@Model.RateError</div>
+            }
+        </div>
+        <form method="post" asp-page-handler="RefreshRate">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Refresh rate</button>
+        </form>
+    </div>
+</section>
+
+<section class="mb-4">
+    <h2 class="h4">Price limits</h2>
+    <p class="text-muted">
+        Define the price brackets and their multiplier. A card's base price is multiplied by the factor
+        of the first limit it's strictly below; anything above every limit uses the last (no-limit) factor.
+    </p>
+
+    <form method="post" asp-page-handler="SaveBrackets">
+        <table class="table table-sm align-middle w-auto">
+            <thead>
+                <tr>
+                    <th>Up to (EUR)</th>
+                    <th>Factor (&times;)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Model.BracketInputs.Count; i++)
+                {
+                    var isCatchAll = !Model.Brackets[i].UpperBoundEur.HasValue;
+                    <tr>
+                        <td>
+                            <input type="hidden" asp-for="BracketInputs[i].Id" />
+                            @if (isCatchAll)
+                            {
+                                <input type="hidden" asp-for="BracketInputs[i].UpperBoundEur" />
+                                <span class="text-muted fst-italic">No limit (and above)</span>
+                            }
+                            else
+                            {
+                                <input asp-for="BracketInputs[i].UpperBoundEur" class="form-control form-control-sm" style="width:8rem" step="0.01" />
+                            }
+                        </td>
+                        <td>
+                            <input asp-for="BracketInputs[i].Factor" class="form-control form-control-sm" style="width:7rem" step="0.0001" />
+                        </td>
+                        <td>
+                            @if (!isCatchAll)
+                            {
+                                <button type="submit" asp-page-handler="DeleteBracket" asp-route-id="@Model.BracketInputs[i].Id"
+                                        class="btn btn-sm btn-outline-danger" formnovalidate>Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary btn-sm">Save limits</button>
+    </form>
+
+    <form method="post" asp-page-handler="AddBracket" class="row g-2 align-items-end mt-3">
+        <div class="col-auto">
+            <label asp-for="NewBracket.UpperBoundEur" class="form-label">New limit, up to (EUR)</label>
+            <input asp-for="NewBracket.UpperBoundEur" class="form-control form-control-sm" style="width:8rem" step="0.01" />
+        </div>
+        <div class="col-auto">
+            <label asp-for="NewBracket.Factor" class="form-label">Factor</label>
+            <input asp-for="NewBracket.Factor" class="form-control form-control-sm" style="width:7rem" step="0.0001" />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Add limit</button>
+        </div>
+    </form>
+</section>
+
+<section>
+    <h2 class="h4">Cards</h2>
+
+    <form method="post" asp-page-handler="AddCard" class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label asp-for="NewCard.Name" class="form-label">Card name</label>
+            <input asp-for="NewCard.Name" class="form-control form-control-sm" />
+        </div>
+        <div class="col-auto">
+            <label asp-for="NewCard.BasePriceEur" class="form-label">Base price (EUR)</label>
+            <input asp-for="NewCard.BasePriceEur" class="form-control form-control-sm" style="width:8rem" step="0.01" />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">Add card</button>
+        </div>
+    </form>
+
+    @if (Model.Cards.Count == 0)
+    {
+        <p class="text-muted">No cards added yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Card</th>
+                        <th>Base (EUR)</th>
+                        @foreach (var b in Model.Brackets)
+                        {
+                            <th class="text-center">
+                                @(b.UpperBoundEur.HasValue ? $"< {b.UpperBoundEur:0.00} €" : "No limit")
+                                <br /><small class="text-muted">&times;@b.Factor.ToString("0.####")</small>
+                            </th>
+                        }
+                        <th>SEK</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var card in Model.Cards)
+                    {
+                        <tr>
+                            <td>@card.Name</td>
+                            <td>@card.BasePriceEur.ToString("0.00")</td>
+                            @foreach (var b in Model.Brackets)
+                            {
+                                <td class="text-center">
+                                    @(b.Id == card.MatchedBracketId ? $"{card.AdjustedEur:0.00} €" : "–")
+                                </td>
+                            }
+                            <td class="fw-semibold">@card.Sek.ToString("0.00") kr</td>
+                            <td>
+                                <form method="post" asp-page-handler="DeleteCard" asp-route-id="@card.Id">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="table-light fw-bold">
+                        <td colspan="@(2 + Model.Brackets.Count)" class="text-end">Total</td>
+                        <td>@Model.TotalSek.ToString("0.00") kr</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+</section>
