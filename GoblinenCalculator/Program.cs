@@ -1,3 +1,4 @@
+using System.Globalization;
 using GoblinenCalculator.Data;
 using GoblinenCalculator.Models;
 using GoblinenCalculator.Options;
@@ -5,6 +6,12 @@ using GoblinenCalculator.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+
+// Prices are entered/stored with '.' as the decimal separator (HTML number
+// inputs assume this). Without forcing invariant culture, a non-'.' OS locale
+// (e.g. sv-SE) breaks form binding of decimal values.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +25,7 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOpt
 builder.Services.AddSingleton<IPasswordHasher<string>, PasswordHasher<string>>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IExchangeRateService, ExchangeRateService>();
@@ -41,7 +48,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 
     if (!db.PriceBrackets.Any())
     {
